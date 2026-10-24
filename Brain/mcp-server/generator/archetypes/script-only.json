@@ -1,0 +1,6 @@
+{
+  "id": "script-only",
+  "luaSides": [],
+  "allowedVerbs": ["add-inert-item-stub", "add-inert-entity-stub", "add-craft-recipe"],
+  "requiredVerbs": []
+}

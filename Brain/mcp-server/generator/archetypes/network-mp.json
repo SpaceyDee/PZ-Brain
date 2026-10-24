@@ -1,0 +1,19 @@
+{
+  "id": "network-mp",
+  "luaSides": ["shared", "client", "server"],
+  "allowedVerbs": [
+    "add-tr-helper",
+    "add-module-id-constant",
+    "add-sandbox-option",
+    "add-event-hook",
+    "add-context-menu-option",
+    "add-command-handler",
+    "add-server-command-send",
+    "add-client-command-send",
+    "add-isadmin-check",
+    "add-inert-item-stub",
+    "add-inert-entity-stub",
+    "add-craft-recipe"
+  ],
+  "requiredVerbs": ["add-module-id-constant"]
+}

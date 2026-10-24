@@ -1,0 +1,265 @@
+{
+  "version": 1,
+  "pending": [
+    {
+      "id": "b42.env.inner-not-isclient-before-sendclientcommand",
+      "kind": "env_guard",
+      "status": "pending",
+      "confidence": "high",
+      "summary": "Indented if not isClient() then return end is valid only immediately before sendClientCommand so singleplayer does not send. File-level negative guards remain forbidden.",
+      "details": "SP is isClient=false isServer=false, so a client wrap must skip sendClientCommand and let the server file run the same action in-process. Hosted-host player is isClient=true and must send to the embedded coop server. File-level if not isClient/isServer then return end still breaks solo and hosted-host.",
+      "pz_versions": [
+        "42.18",
+        "42.20"
+      ],
+      "evidence": [
+        "mod_source:MasterySystem/Contents/mods/MasterySystem/42/media/lua/client/Effects/MasteryEffectsClient_Husbandry.lua",
+        "mod_source:MasterySystem/Contents/mods/MasterySystem/42/media/lua/client/Effects/MasteryEffectsClient_FootstepNoise.lua",
+        "verified:b42.env.hosted-host-player-isclient-true"
+      ],
+      "enforced_by": [
+        "space_audit_lua_guards",
+        "space_validate_env_guards",
+        "space_production_release_gate"
+      ],
+      "created_by": "agent",
+      "created_at": "2026-09-03T03:04:04.538Z",
+      "updated_at": "2026-09-03T03:04:04.538Z"
+    },
+    {
+      "id": "b42.net.sendclientcommand-player-first",
+      "kind": "networking",
+      "status": "pending",
+      "confidence": "high",
+      "summary": "Prefer sendClientCommand(player, MODULE_ID, command, args). The 3-arg module-first form still works but static contract audits must parse both arities.",
+      "details": "4-arg player-first is the MasterySystem/MP convention. Auditors that treat the first argument as the module id mark every player-first send as dynamic/unmatched.",
+      "pz_versions": [
+        "42.18",
+        "42.20"
+      ],
+      "evidence": [
+        "mod_source:MasterySystem FootstepNoise/Electrical/Mechanics sendClientCommand(player, MODULE_ID, ...)",
+        "vanilla: sendServerCommand already commonly player-first"
+      ],
+      "enforced_by": [
+        "space_audit_command_contracts",
+        "space_audit_mastery_system"
+      ],
+      "created_by": "agent",
+      "created_at": "2026-09-03T03:04:07.596Z",
+      "updated_at": "2026-09-03T03:04:07.596Z"
+    },
+    {
+      "id": "b42.api.addsound-extra-hearing-not-engine-loudness",
+      "kind": "api",
+      "status": "pending",
+      "confidence": "high",
+      "summary": "Extra zombie hearing on foot is server addSound(player, x, y, z, radius, volume). vehicle:setEngineFeature/getEngineLoudness are vehicle-only and cannot quiet vanilla footsteps.",
+      "details": "Vanilla footsteps stay engine-owned. Mastery extra ping: sneak silent; walk silent at Nutrition weight <= 80; run/sprint always; walk 81-100 scales up. Weight clamped 60/80/100.",
+      "pz_versions": [
+        "42.20"
+      ],
+      "evidence": [
+        "mod_source:MasterySystem MasteryFootstepNoise.lua / MasteryEffects_FootstepNoise.lua",
+        "mod_source:Mechanics uses vehicle:setEngineFeature correctly for engines"
+      ],
+      "enforced_by": [
+        "space_audit_mastery_system"
+      ],
+      "created_by": "agent",
+      "created_at": "2026-09-03T03:04:10.551Z",
+      "updated_at": "2026-09-03T03:04:10.551Z"
+    },
+    {
+      "id": "release_gate.probe-log-required-for-pass",
+      "kind": "release_gate",
+      "status": "pending",
+      "confidence": "high",
+      "summary": "space_production_release_gate cannot PASS without log_path or log_text from an owner-run pz-sp-probe (and pz-mp-probe when MP paths changed). Missing log is REVIEW probe_log_missing, never PASS.",
+      "details": "Static Lua parse and audits do not catch missing Java methods, hosted two-process, or addSound hearing feel. See docs/tracking/PROBE_PREHANDOFF_GATE.md.",
+      "pz_versions": [
+        "42.18",
+        "42.20"
+      ],
+      "evidence": [
+        "docs/tracking/PROBE_PREHANDOFF_GATE.md",
+        "CLAUDE.md Probe Boot Gate"
+      ],
+      "enforced_by": [
+        "space_production_release_gate"
+      ],
+      "created_by": "agent",
+      "created_at": "2026-09-03T03:04:14.875Z",
+      "updated_at": "2026-09-03T03:04:14.875Z"
+    },
+    {
+      "id": "mastery.getactive-ult-capstone-only",
+      "kind": "trap",
+      "status": "pending",
+      "confidence": "high",
+      "summary": "MasteryConfig.getActive ult1 must be capstoneId only. Falling back to the T5 specialization name grants capstone kits at commitment when names collide (Electrical Locksmith).",
+      "details": "3-value callers bind local spec, rank, ult = getActive(...). New schema returns earlyPath, rank, ult1=capstoneId, capstoneId, picks.",
+      "pz_versions": [
+        "42.20"
+      ],
+      "evidence": [
+        "mod_source:MasteryConfig.lua _getActiveFromNewSchema local ult1 = capstoneId",
+        "REMEDIATION/MasterySystem.md 2026-09-03 playtest blockers"
+      ],
+      "enforced_by": [
+        "space_audit_mastery_system",
+        "space_production_release_gate"
+      ],
+      "created_by": "agent",
+      "created_at": "2026-09-03T03:04:14.875Z",
+      "updated_at": "2026-09-03T03:04:14.875Z"
+    },
+    {
+      "id": "b42.api.nutrition-getweight-60-80-100",
+      "kind": "api",
+      "status": "pending",
+      "confidence": "high",
+      "summary": "IsoPlayer Nutrition getWeight() is the 80-is-normal body-weight stat. Clamp extra-noise math to 60 (floor), 80 (normal), 100 (cap).",
+      "details": "This is body-composition weight, not carry kg. Extra footstep ping uses 60=0.5x, 80=1.0x and silent walk, 100=1.5x cap.",
+      "pz_versions": [
+        "42.20"
+      ],
+      "evidence": [
+        "mod_source:MasterySystem MasteryFootstepNoise.lua WEIGHT_MIN/NORMAL/MAX",
+        "owner: 80 is normal, 60 unhealthy-light floor, 100 loudness cap"
+      ],
+      "enforced_by": [
+        "space_audit_mastery_system"
+      ],
+      "created_by": "agent",
+      "created_at": "2026-09-03T03:05:00.000Z",
+      "updated_at": "2026-09-03T03:05:00.000Z"
+    },
+    {
+      "id": "b42.lua.require-must-return-module-table",
+      "kind": "trap",
+      "status": "pending",
+      "confidence": "high",
+      "summary": "PZ require() returns nil unless the target Lua file ends with a top-level return of the module table; callers then crash on Module.new / Module.fn.",
+      "details": "In Project Zomboid B42 Kahlua, `local M = require(\"Path/Module\")` binds whatever the chunk returns. If the file only sets a global (`Module = Module or {}`) and never executes a top-level `return Module`, require resolves to nil. Call sites then fail with `attempted index: new of non-table: null` or `attempt to call a nil value`. Early env guards such as `if isServer() then return end` are not module exports. Subdirectory modules under client/server/shared must be require()'d and must return their table. Observed 2026-09-05 on HavenFollowBuddy when HFB_ActionBroker/HFB_Runtime/etc. lacked returns.",
+      "pz_versions": [
+        "42.20",
+        "42"
+      ],
+      "evidence": [
+        "HavenFollowBuddy.lua:2203 HFB_ActionBroker.new() → attempted index: new of non-table: null (SP boot 2026-09-05)",
+        "Brain/references/build42/known_problem_patterns.md Pattern 14",
+        "Brain/references/build42/lua_modding_notes.md Require Pattern — File must use return at end",
+        "space_audit_b42_api_traps require_missing_return rule"
+      ],
+      "enforced_by": [
+        "space_audit_b42_api_traps",
+        "space_production_release_gate"
+      ],
+      "created_by": "agent",
+      "created_at": "2026-09-05T00:38:42.726Z",
+      "updated_at": "2026-09-05T00:38:42.726Z"
+    },
+    {
+      "id": "b42.npc.hit-api-for-shell-melee",
+      "kind": "api",
+      "status": "pending",
+      "confidence": "medium",
+      "summary": "IsoZombie shell melee can apply damage via victim:Hit(weaponItem, attacker, dmg, ...) after setTarget; pathFindBehavior2 drives approach.",
+      "details": "Bandits combat pattern (study-only): InstanceItem weapon, setTarget/setAttackedBy, Hit on victim. Clean-room companions should use the same engine Hit path rather than only setUseless+path. Continuous pathFindBehavior2:pathToLocation+update while closing.",
+      "pz_versions": [
+        "42.20"
+      ],
+      "evidence": [
+        "Bandits BanditUpdate.lua Hit(teeth, zombie,...)",
+        "ZASmack victim:Hit(item, fakeZombie,...)",
+        "ZAMove pathFindBehavior2 pathToLocation"
+      ],
+      "enforced_by": [],
+      "created_by": "agent",
+      "created_at": "2026-09-05T14:07:42.637Z",
+      "updated_at": "2026-09-05T14:07:42.637Z"
+    },
+    {
+      "id": "b42.npc.isozombie-shells-pollute-threat-scans",
+      "kind": "trap",
+      "status": "pending",
+      "confidence": "high",
+      "summary": "Untagged or ally IsoZombie NPC shells are counted as hostile zombies by square/threat scans, causing false bugout/breach loops.",
+      "details": "Any IsoZombie on a porch/square triggers squareHasZed / findNearbyZombies unless ModData filters them. Buddy 0.8.13 escort shells caused endless BUGOUT breach. Ally escorts must use unique ModData tags (HW_Escort/HFB_Escort) and be excluded at the scan source. parkedN must use filtered threat count.",
+      "pz_versions": [
+        "42.20"
+      ],
+      "evidence": [
+        "HavenFollowBuddy 0.8.13 bot log BUGOUT breach with escorts",
+        "fix in 0.8.15+ findNearbyZombies/squareHasZed ally skip"
+      ],
+      "enforced_by": [
+        "space_analyze_pz_log"
+      ],
+      "created_by": "agent",
+      "created_at": "2026-09-05T14:08:29.039Z",
+      "updated_at": "2026-09-05T14:08:29.039Z"
+    },
+    {
+      "id": "b42.lua.local-forward-decl-required",
+      "kind": "trap",
+      "status": "pending",
+      "confidence": "high",
+      "summary": "Calling a local function defined later in the same chunk without a forward declaration resolves to a nil global in Kahlua.",
+      "details": "tryAutoBandage called closestZombieDist before local closestZombieDist was assigned; runtime Object tried to call nil. Forward-declare local closestZombieDist before use. Do not re-declare names already assigned as chunk globals.",
+      "pz_versions": [
+        "42.20"
+      ],
+      "evidence": [
+        "HavenFollowBuddy tryAutoBandage stack",
+        "HavenFollowBuddy.lua forward-decl comment for nearbyThreatCount"
+      ],
+      "enforced_by": [
+        "space_analyze_pz_log"
+      ],
+      "created_by": "agent",
+      "created_at": "2026-09-05T14:08:29.046Z",
+      "updated_at": "2026-09-05T14:08:29.046Z"
+    },
+    {
+      "id": "b42.api.addzombiesinoutfit-arity",
+      "kind": "api",
+      "status": "pending",
+      "confidence": "high",
+      "summary": "addZombiesInOutfit wrong arity/types throws No implementation found; B42 expects the 13-arg Bandits form (includes invulnerable+sitting before health).",
+      "details": "B42.20 MultiLuaJavaInvoker throws RuntimeException 'No implementation found for function: addZombiesInOutfit(...)' when the Lua call arity/types do not match an exposed overload. HavenWingman 0.3.1 used a 12-arg form (missing sitting before health) and crashed on possess. Bandits B42 uses 13 args: x,y,z,count,outfit,femaleChance,crawler,fallOnFront,fakeDead,knockedDown,invulnerable,sitting,health. Prefer createZombie when unsure; never call a guessed arity without a matching overload.",
+      "pz_versions": [
+        "42.20"
+      ],
+      "evidence": [
+        "HavenWingmanCompanions spawnAt stack 2026-09-06 SP 42.20.4",
+        "BanditCompatibility.AddZombiesInOutfit 13-arg for getGameVersion>=42"
+      ],
+      "enforced_by": [],
+      "created_by": "agent",
+      "created_at": "2026-09-05T23:21:52.131Z",
+      "updated_at": "2026-09-05T23:21:52.131Z"
+    },
+    {
+      "id": "b42.filewriter.jsonl-extension-refused",
+      "kind": "api",
+      "status": "pending",
+      "confidence": "high",
+      "summary": "B42 Lua getFileWriter(name, true, false) returns nil for .jsonl file names; .txt/.json/.ini work. Write JSON-lines data to .txt.",
+      "details": "Observed on 42.21 Linux SP client. Silent failure (nil writer, no console error). Also: when a mod is deployed to ~/Zomboid/mods on a host that also has the Steam workshop copy, the workshop copy can win; replace both.",
+      "pz_versions": [
+        "42.21"
+      ],
+      "evidence": [
+        "<owner> 2026-10-03: HFB 0.8.59 logged 'trace writer_failed path=HavenFollowBuddy_trace.jsonl' right after 'trace ready'.",
+        "Zomboid/Lua held ~3480 .txt, 12 .json, 5 .ini Lua-written files and no Lua-written .jsonl; HavenFollowBuddy_houses.jsonl never created.",
+        "HFB 0.8.60 renamed to HavenFollowBuddy_trace.txt: 'trace first_flush n=2' and a 109 KB file within seconds (commit 1c238bff)."
+      ],
+      "enforced_by": [],
+      "created_by": "agent",
+      "created_at": "2026-10-02T14:50:58.030Z",
+      "updated_at": "2026-10-02T14:50:58.030Z"
+    }
+  ]
+}

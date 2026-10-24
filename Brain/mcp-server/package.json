@@ -1,0 +1,21 @@
+{
+  "name": "pz-modding-brain-mcp",
+  "version": "0.2.0",
+  "description": "MCP server exposing the Project Zomboid B42 modding Brain as resources + tools.",
+  "type": "module",
+  "bin": {
+    "pz-modding-brain-mcp": "./server.mjs"
+  },
+  "scripts": {
+    "start": "node server.mjs",
+    "doctor": "node ../../doctor.mjs",
+    "setup": "node ../../install.mjs",
+    "index": "node build-mod-index.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.4"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

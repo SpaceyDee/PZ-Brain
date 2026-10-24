@@ -1,0 +1,47 @@
+{
+  "version": 1,
+  "kinds": [
+    "api",
+    "event",
+    "layout",
+    "env_guard",
+    "networking",
+    "moddata",
+    "translation",
+    "sandbox",
+    "ui",
+    "timed_action",
+    "trap",
+    "pattern",
+    "workflow",
+    "release_gate",
+    "config",
+    "mod"
+  ],
+  "statuses": [
+    "pending",
+    "verified",
+    "deprecated"
+  ],
+  "confidences": [
+    "low",
+    "medium",
+    "high"
+  ],
+  "created_by": [
+    "human",
+    "agent",
+    "test-server"
+  ],
+  "required": [
+    "id",
+    "kind",
+    "status",
+    "confidence",
+    "summary",
+    "evidence",
+    "created_by",
+    "created_at",
+    "updated_at"
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "id": "sandbox-qol",
+  "luaSides": ["shared", "client"],
+  "allowedVerbs": [
+    "add-tr-helper",
+    "add-module-id-constant",
+    "add-sandbox-option",
+    "add-event-hook",
+    "add-context-menu-option",
+    "add-inert-item-stub",
+    "add-inert-entity-stub",
+    "add-craft-recipe"
+  ],
+  "requiredVerbs": []
+}

@@ -1,0 +1,3 @@
+PZ Modding Brain 0.2.0
+Read README.md. Windows: install.cmd; macOS/Linux: bash install.sh.
+Optional older Brain import is offered during setup. No old knowledge is overwritten.
