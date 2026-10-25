@@ -2886,7 +2886,7 @@ function summarizeScriptBlock(key, block, parameterNeedle = "") {
   const params = scriptBlockParameters(block);
   const shownParams = parameterNeedle
     ? params.filter((p) => String(p?.name ?? "").toLowerCase().includes(parameterNeedle))
-    : params.slice(0, 80);
+    : params.slice(0, 10);
 
   return {
     key,
@@ -2905,7 +2905,7 @@ function summarizeScriptBlock(key, block, parameterNeedle = "") {
       type: p?.type ?? null,
       required: Boolean(p?.required),
       default: p?.default,
-      description: p?.description ?? "",
+      description: parameterNeedle ? (p?.description ?? "") : undefined,
       deprecated: p?.deprecated ?? null,
       needs: p?.needs ?? undefined,
     })),
@@ -4179,18 +4179,76 @@ async function validateWorkshopVersions(pathArg) {
 }
 
 
+const RESOURCE_LIST_LIMIT = 25;
+
+function summarizeTruths(result) {
+  return {
+    status: result.status,
+    count: result.count,
+    total: result.total,
+    entries: (result.entries ?? []).map((entry) => ({
+      id: entry.id,
+      kind: entry.kind,
+      status: entry.status,
+      confidence: entry.confidence,
+      summary: entry.summary,
+    })),
+  };
+}
+
 const server = new Server(
   { name: "pz-modding-brain", version: JSON.parse(await readFile(join(HERE, "package.json"), "utf8")).version },
   { capabilities: { resources: {}, tools: {} } },
 );
 
+const PUBLIC_HIDDEN_TOOLS = [
+  "space_headless_probe",
+  "space_stage_workshop_uploads",
+  "space_audit_biteme_mods",
+  "space_audit_bb_sandbox_menu",
+  "space_audit_mastery_system",
+];
+
+const LEGACY_TOOL_NAMES = [
+  "space_audit_biteme_mods",
+  "space_audit_lua_guards",
+  "space_audit_safe_call",
+  "space_audit_translations",
+  "space_audit_command_contracts",
+  "space_audit_sandbox_schema",
+  "space_audit_bb_sandbox_menu",
+  "space_audit_text_encoding",
+  "space_audit_runtime_risks",
+  "space_audit_moddata_usage",
+  "space_audit_network_commands",
+  "space_audit_event_hooks",
+  "space_validate_env_guards",
+  "space_validate_workshop_meta",
+  "space_audit_workshop_copy",
+  "space_validate_file_structure",
+  "space_validate_b42_changes",
+  "space_find_bare_gettext",
+  "space_list_todo_items",
+  "space_audit_timed_actions",
+  "space_audit_isadmin_completeness",
+  "space_audit_b42_api_traps",
+  "space_validate_workshop_versions",
+  "space_audit_mastery_system",
+  "space_inspect_mod_layout",
+];
+
 async function currentToolNameSet() {
   const source = await readFile(fileURLToPath(import.meta.url), "utf8");
-  return new Set([...source.matchAll(/name:\s*"([^"]+)"/g)].map((match) => match[1]));
+  return new Set([
+    ...[...source.matchAll(/name:\s*"([^"]+)"/g)].map((match) => match[1]),
+    ...LEGACY_TOOL_NAMES,
+  ]);
 }
 
 server.setRequestHandler(ListResourcesRequestSchema, async () => {
-  const files = await walk(BRAIN_ROOT);
+  const curated = await walk(BRAIN_ROOT);
+  curated.sort((a, b) => Number(a.includes(`${sep}imports${sep}`)) - Number(b.includes(`${sep}imports${sep}`)));
+  const files = curated.slice(0, RESOURCE_LIST_LIMIT);
   return {
     resources: files.map((f) => {
       const rel = relative(BRAIN_ROOT, f).split(sep).join("/");
@@ -4222,13 +4280,12 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
   tools: [
     {
       name: "space_brain_status",
-      description: "Show installed Brain version, configured directories, public profile, and truth counts. Pending and imported records are not verified facts.",
+      description: "Installed Brain version, configured directories, public profile and truth counts. Pending/imported records are unverified evidence.",
       inputSchema: { type: "object", properties: {} },
     },
     {
       name: "space_search_brain",
-      description:
-        "Case-insensitive substring search across every brain file. Returns up to max_results hits with file path, line number, and surrounding context.",
+      description: "Case-insensitive substring search across every Brain file; returns file path, line number and context.",
       inputSchema: {
         type: "object",
         properties: {
@@ -4240,8 +4297,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     },
     {
       name: "space_lookup_method",
-      description:
-        "Look up a PZ B42 method, event, or pattern by name in the method database. Substring match on method_or_pattern_name. Returns the full DB entries.",
+      description: "Substring lookup of a B42 method, event or pattern name in the method database.",
       inputSchema: {
         type: "object",
         properties: {
@@ -4252,8 +4308,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     },
     {
       name: "space_lookup_script_block",
-      description:
-        "Look up Project Zomboid script block/schema metadata from the ingested PZ-Wiki-Modding pz-scripts-data dataset. Use for script formats such as item, craftRecipe, fluid, entity, vehicle, mod.info, and sandbox-options.txt.",
+      description: "Script block/schema lookup (item, craftRecipe, fluid, entity, vehicle, mod.info, sandbox-options.txt, ...).",
       inputSchema: {
         type: "object",
         properties: {
@@ -4320,9 +4375,37 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       },
     },
     {
+      name: "space_audit",
+      description: "Run one or more focused read-only audits/validators on a local mod folder or Lua/scripts file. Returns a compact JSON result.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          path: { type: "string", description: "Local mod folder or Lua/scripts file path to audit." },
+          checks: {
+            type: "array",
+            items: { type: "string", enum: ["biteme_mods","lua_guards","safe_call","translations","command_contracts","sandbox_schema","bb_sandbox_menu","text_encoding","runtime_risks","moddata_usage","network_commands","event_hooks","env_guards","workshop_meta","workshop_copy","file_structure","b42_changes","bare_gettext","timed_actions","isadmin_completeness","b42_api_traps","workshop_versions","mastery_system"] },
+            description: "Audits to run. Omit to run all.",
+          },
+        },
+        required: ["path"],
+      },
+    },
+    {
+      name: "space_inspect",
+      description: "Inspect a local mod folder or Lua file: layout overview, or TODO/FIXME/HACK/XXX/BUG annotations.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          path: { type: "string", description: "Local mod folder or Lua file path to inspect." },
+          kind: { type: "string", enum: ["mod_layout", "todo_items"], description: "mod_layout = mod folder structure overview (default). todo_items = TODO/FIXME/HACK/XXX/BUG scan." },
+          max_results: { type: "integer", minimum: 1, maximum: 200, default: 50, description: "Only for kind=todo_items." },
+        },
+        required: ["path"],
+      },
+    },
+    {
       name: "space_validate_lua_syntax",
-      description:
-        "Read-only Lua 5.1 parse check via paths.mjs LUAC_PATH (first existing: PZ_LUAC_PATH, mcp-server/vendor, Workshop/_tooling/lua-5.1.5, Workshop/lua-5.1.5, then luac5.1 on PATH). Accepts a Lua file or folder under the Workshop root. Pair with scripts/kahlua_compat_guard.py for post-5.1 syntax.",
+      description: "Read-only Lua 5.1 parse check via luac -p for a file or folder under the Workshop root.",
       inputSchema: {
         type: "object",
         properties: {
@@ -4330,104 +4413,6 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
           max_files: { type: "integer", minimum: 1, maximum: 500, default: 200 },
         },
         required: ["path"],
-      },
-    },
-    {
-      name: "space_audit_biteme_mods",
-      description:
-        "One-call static audit for Biteme/BiteMe Project Zomboid Workshop mods. Scans the Workshop folder, identifies Biteme mod folders, checks metadata, Lua syntax, pcall/safeCall, server/client guards, OnTick usage, and duplicate mirrors.",
-      inputSchema: {
-        type: "object",
-        properties: {
-          path: { type: "string", description: "Workshop folder path to scan. Defaults to <workshop-root>." },
-          max_findings: { type: "integer", minimum: 1, maximum: 100, default: 10, description: "Maximum number of findings to return. Use 10 for concise reports." },
-        },
-      },
-    },
-    {
-      name: "space_inspect_mod_layout",
-      description:
-        "Read-only Project Zomboid mod layout inspection. Checks workshop.txt, mod.info files, Contents/mods structure, Lua file counts, and duplicate root mirrors.",
-      inputSchema: {
-        type: "object",
-        properties: {
-          path: { type: "string", description: "Local mod folder path to inspect." },
-        },
-        required: ["path"],
-      },
-    },
-    {
-      name: "space_audit_lua_guards",
-      description:
-        "Read-only audit of Project Zomboid Lua client/server/shared file guards. Checks client files have 'if isServer() then return end', server files have 'if isClient() then return end', flags shared files that wrongly carry a guard, and flags forbidden FILE-LEVEL negative guards (if not isServer/isClient) that break singleplayer and hosted-host. Indented `if not isClient() then return end` immediately before sendClientCommand is allowed (SP must not send). Inner negative guards elsewhere are review-level.",
-      inputSchema: {
-        type: "object",
-        properties: {
-          path: { type: "string", description: "Local mod folder or Lua file path to audit." },
-        },
-        required: ["path"],
-      },
-    },
-    {
-      name: "space_audit_safe_call",
-      description:
-        "Read-only audit of pcall/safeCall usage in Project Zomboid Lua files. Classifies safeCall helpers as pcall wrappers or direct fn() wrappers where possible.",
-      inputSchema: {
-        type: "object",
-        properties: {
-          path: { type: "string", description: "Local mod folder or Lua file path to audit." },
-        },
-        required: ["path"],
-      },
-    },
-    {
-      name: "space_audit_translations",
-      description:
-        "Read-only audit of Project Zomboid translation coverage. Checks sandbox option labels/tooltips/pages and likely local getText() keys against this mod's Translate files.",
-      inputSchema: {
-        type: "object",
-        properties: {
-          path: { type: "string", description: "Local mod folder or file path to audit." },
-        },
-        required: ["path"],
-      },
-    },
-    {
-      name: "space_audit_command_contracts",
-      description:
-        "Read-only audit of client/server command contracts. Resolves local MODULE_ID constants and the 4-arg player-first sendClientCommand/sendServerCommand form. Matches command names against OnClientCommand/OnServerCommand handlers, including `RESULT_COMMANDS[command] = true` lookup tables.",
-      inputSchema: {
-        type: "object",
-        properties: {
-          path: { type: "string", description: "Local mod folder or Lua file path to audit." },
-        },
-        required: ["path"],
-      },
-    },
-    {
-      name: "space_audit_sandbox_schema",
-      description:
-        "Read-only audit of sandbox-options.txt schema. Checks duplicate option ids, valid types, defaults, min/max ranges, page fields, and translation fields.",
-      inputSchema: {
-        type: "object",
-        properties: {
-          path: { type: "string", description: "Local mod folder or sandbox-options.txt path to audit." },
-        },
-        required: ["path"],
-      },
-    },
-    {
-      name: "space_audit_bb_sandbox_menu",
-      description:
-        "Read-only BB Common Sense sandbox menu audit. Checks each BB sandbox page is named after its mod, page tooltip explains the module purpose, and option labels/tooltips are feature-relevant.",
-      inputSchema: {
-        type: "object",
-        properties: {
-          path: {
-            type: "string",
-            description: "Optional local BB mod folder or Workshop root path. Defaults to the current Workshop root.",
-          },
-        },
       },
     },
     {
@@ -4456,30 +4441,6 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       },
     },
     {
-      name: "space_audit_text_encoding",
-      description:
-        "Read-only audit for suspected text mojibake/encoding damage in mod text and translation files.",
-      inputSchema: {
-        type: "object",
-        properties: {
-          path: { type: "string", description: "Local mod folder or text file path to audit." },
-        },
-        required: ["path"],
-      },
-    },
-    {
-      name: "space_audit_runtime_risks",
-      description:
-        "Read-only production-risk audit for Project Zomboid Lua runtime hazards. Catches: mutable square object iteration, forced UI top-layer loops, screen-sized ISUIElement/ISPanel overlays added to UIManager without mouse passthrough, unchecked unloaded grid squares, local timed action class declaration (breaks MP in B42.13+), character:getXp():AddXP() with no MP sync (use global addXp()), ResourceLocation objects compared directly to strings (always false — wrap with tostring()), ipairs or # used on Java ArrayList results (use 0-indexed :size()/:get()), unthrottled OnTick on any file side, B42-removed getDelta() and wound method renames, broken item:hasTag(string), and more.",
-      inputSchema: {
-        type: "object",
-        properties: {
-          path: { type: "string", description: "Local mod folder or Lua file path to audit." },
-        },
-        required: ["path"],
-      },
-    },
-    {
       name: "space_analyze_pz_log",
       description:
         "Analyze pasted Project Zomboid server/client log text or a local log file for known mod-development failure patterns and likely ownership points.",
@@ -4494,7 +4455,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     {
       name: "space_production_release_gate",
       description:
-        "Single production-readiness gate for a Project Zomboid mod. Runs all audit tools and returns a PASS/REVIEW/BLOCK verdict with prioritised findings. Covers: mod layout, Lua syntax, environment guards, safeCall/pcall, translations, bare getText, command contracts, sandbox schema, text encoding, runtime risks (including screen-sized overlays without mouse passthrough), event hooks, B42 breaking changes, workshop copy, MasterySystem grammar when MasteryConfig.lua is present, and PZ log analysis. Without log_path/log_text the verdict cannot be PASS (probe_log_missing → REVIEW). A clean owner-run pz-sp-probe console.txt is required for handoff; pz-mp-probe is required when MP command/ModData paths changed.",
+        "Single production-readiness gate: runs all audits and returns a PASS/REVIEW/BLOCK verdict with prioritised findings. Without log_path/log_text the verdict cannot be PASS.",
       inputSchema: {
         type: "object",
         properties: {
@@ -4532,7 +4493,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     {
       name: "space_create_pending_mod_fix_patch",
       description:
-        "Autonomous but read-only planning tool. Creates a pending patch for safe first-pass fixes under the Workshop root only: missing client/server guards and direct safeCall(function() fn() end) cleanup. Does not edit mod files.",
+        "Read-only planning tool. Creates a pending patch for safe first-pass fixes under the Workshop root only; does not edit mod files.",
       inputSchema: {
         type: "object",
         properties: {
@@ -4562,7 +4523,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     {
       name: "space_apply_pending_patch",
       description:
-        "Human-in-the-loop write tool. Applies a pending patch only when approval_text exactly matches APPROVE PATCH <patch_id>. Creates central backups first, refuses files changed since planning, and validates Lua syntax after writing.",
+        "Human-gated write tool. Applies a pending patch only when approval_text exactly matches APPROVE PATCH <patch_id>. Backs up, refuses changed files, validates Lua syntax after writing.",
       inputSchema: {
         type: "object",
         properties: {
@@ -4573,199 +4534,9 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       },
     },
     {
-      name: "space_validate_env_guards",
-      description:
-        "Validates environment guards in Project Zomboid mod Lua files. Checks server files have 'if isClient() then return end', client files have 'if isServer() then return end', shared files have no guard, and flags forbidden FILE-LEVEL negative guards. Scans leading executable lines (comment/blank banners skipped). Inner `if not isClient() then return end` immediately before sendClientCommand is allowed.",
-      inputSchema: {
-        type: "object",
-        properties: {
-          path: { type: "string", description: "Local mod folder or Lua file path to validate." },
-        },
-        required: ["path"],
-      },
-    },
-    {
-      name: "space_validate_workshop_meta",
-      description:
-        "Validates mod.info and workshop.txt workshop metadata. Checks required fields (id, name, description, author, versionMin=42.x), both mod.info copies (root and 42/), workshop.txt required fields and tags, changenote= for the next push, and whether workshop.txt is newer than gameplay/art files.",
-      inputSchema: {
-        type: "object",
-        properties: {
-          path: { type: "string", description: "Local mod folder path to validate." },
-        },
-        required: ["path"],
-      },
-    },
-    {
-      name: "space_audit_workshop_copy",
-      description:
-        "Pass/fail audit that Workshop listing copy is current: workshop.txt description, changenote= (next-push changelog, must name current modversion), no PLACEHOLDER text, and workshop.txt saved after the newest lua/scripts/sandbox/translate/preview/poster change.",
-      inputSchema: {
-        type: "object",
-        properties: {
-          path: { type: "string", description: "Local Workshop package folder (the folder that contains workshop.txt)." },
-        },
-        required: ["path"],
-      },
-    },
-    {
-      name: "space_validate_file_structure",
-      description:
-        "Validates the Workshop mod folder structure. Checks for workshop.txt, preview.png, both mod.info copies, poster.png, correct Lua subdirectory placement, and sandbox translation files.",
-      inputSchema: {
-        type: "object",
-        properties: {
-          path: { type: "string", description: "Local mod folder path to validate." },
-        },
-        required: ["path"],
-      },
-    },
-    {
-      name: "space_validate_b42_changes",
-      description:
-        "Checks Lua and script files for B42 breaking change violations: broken item:hasTag(string) API, removed events (OnFillVehicleMenu, OnExitVehicle), removed APIs (getAttachmentsProvided, getZombieList, getObjectList), vehicle:isEngineStarted() semantic warning (true during cranking, not running — use isEngineRunning()), renamed items (Stone→Stone2 etc. — only flagged in string/item-ID contexts), and old script formats (Type= / recipe).",
-      inputSchema: {
-        type: "object",
-        properties: {
-          path: { type: "string", description: "Local mod folder or Lua file path to check." },
-        },
-        required: ["path"],
-      },
-    },
-    {
-      name: "space_audit_moddata_usage",
-      description:
-        "Audits ModData patterns in Project Zomboid mod Lua files. Checks for correct use of ModData.getOrCreate(), ModData.transmit() after mutations, _version migration fields, args.username identity issues, and function storage in ModData.",
-      inputSchema: {
-        type: "object",
-        properties: {
-          path: { type: "string", description: "Local mod folder or Lua file path to audit." },
-        },
-        required: ["path"],
-      },
-    },
-    {
-      name: "space_audit_network_commands",
-      description:
-        "Audits sendClientCommand/sendServerCommand usage and OnClientCommand/OnServerCommand handler guards. Checks for missing module ~= MODULE_ID guards, args.username identity trust issues, missing args tables, and absent isAdmin checks on server command handlers.",
-      inputSchema: {
-        type: "object",
-        properties: {
-          path: { type: "string", description: "Local mod folder or Lua file path to audit." },
-        },
-        required: ["path"],
-      },
-    },
-    {
-      name: "space_audit_event_hooks",
-      description:
-        "Audits event hook patterns in Project Zomboid mod Lua files. Flags server files using OnGameStart for bootstrap, OnTick/OnPlayerUpdate abuse, deprecated OnPlayerDisconnect, and B42-removed events like OnExitVehicle and OnFillVehicleMenu.",
-      inputSchema: {
-        type: "object",
-        properties: {
-          path: { type: "string", description: "Local mod folder or Lua file path to audit." },
-        },
-        required: ["path"],
-      },
-    },
-    {
-      name: "space_find_bare_gettext",
-      description:
-        "Scans publishable Lua for bare getText(\"literal\") / getTextOrNull calls that bypass the mod's tr()/tryText() helper. The helper definition itself is exempt. These leak raw translation keys when the deployed Workshop copy is older than local Translate files. Folded into space_production_release_gate as REVIEW.",
-      inputSchema: {
-        type: "object",
-        properties: {
-          path: { type: "string", description: "Mod folder or Lua file path to scan." },
-        },
-        required: ["path"],
-      },
-    },
-    {
-      name: "space_list_todo_items",
-      description:
-        "Lists all TODO, FIXME, HACK, XXX, and BUG annotations in Lua files under the given path, grouped by tag type with file:line references.",
-      inputSchema: {
-        type: "object",
-        properties: {
-          path: { type: "string", description: "Mod folder or Lua file path to scan." },
-          max_results: { type: "integer", minimum: 1, maximum: 200, default: 50 },
-        },
-        required: ["path"],
-      },
-    },
-    {
-      name: "space_audit_timed_actions",
-      description:
-        "Audits ISBaseTimedAction subclasses for common pitfalls: (a) class declared as local instead of global (breaks MP), (b) :perform() missing ISBaseTimedAction.perform(self) call, (c) :stop() missing ISBaseTimedAction.stop(self) call, (d) :new() not setting o.maxTime (action never completes). Covers CLAUDE.md pitfalls #24 and #26.",
-      inputSchema: {
-        type: "object",
-        properties: {
-          path: { type: "string", description: "Mod folder or Lua file path to audit." },
-        },
-        required: ["path"],
-      },
-    },
-    {
-      name: "space_audit_isadmin_completeness",
-      description:
-        "Checks every isAdmin/isAdminPlayer function that calls getAccessLevel and flags any that are missing required access level strings: admin, moderator, overseer, gm, observer (and their Title-case variants). Covers CLAUDE.md pitfall #43.",
-      inputSchema: {
-        type: "object",
-        properties: {
-          path: { type: "string", description: "Mod folder or Lua file path to audit." },
-        },
-        required: ["path"],
-      },
-    },
-    {
-      name: "space_audit_b42_api_traps",
-      description:
-        "Audits mod Lua and scripts/characters files for B42 API traps documented in pending truth store (2026-06-03). " +
-        "Detects: (1) :hasTrait(string) — throws 'No implementation found' in B42.19; " +
-        "(2) :HasTrait( — PascalCase variant absent; " +
-        "(3) :getTraits():add( — legacy B41 path disconnected from B42 trait system; " +
-        "(4) stale require paths moved in B42 (e.g. 'ISUI/ISCharacterInfoWindow' → 'XpSystem/ISUI/ISCharacterInfoWindow'); " +
-        "(5) view:createChildren() before addView/addChild — click-inert tab bug; " +
-        "(6) mixed-case CharacterTrait IDs in scripts/characters/*.txt — causes NPE at load. " +
-        "(7) module-reference-integrity — Name.X()/Name:X() where Name matches a shared/ subdir module in this mod but is not require()-bound in the calling file (bare global evaluates to nil; truth b42.lua.subdir-modules-not-autoloaded). " +
-        "(8) require-missing-return — a file require()'d by this mod has no top-level `return ModuleTable`, so callers get nil and crash with 'attempted index: new of non-table: null' (truth b42.lua.require-must-return-module-table). " +
-        "The Java-method presence-guard trap is noted but not auto-detected.",
-      inputSchema: {
-        type: "object",
-        properties: {
-          path: { type: "string", description: "Mod folder or single Lua/scripts file path to audit." },
-        },
-        required: ["path"],
-      },
-    },
-    {
-      name: "space_validate_workshop_versions",
-      description:
-        "Reads modversion, pzversion, and versionMin from all mod.info files under the target. Flags mismatches between root and 42/ copies, bare versionMin=42 (must be 42.0), and missing modversion fields.",
-      inputSchema: {
-        type: "object",
-        properties: {
-          path: { type: "string", description: "Mod folder or Workshop root path to check." },
-        },
-        required: ["path"],
-      },
-    },
-    {
-      name: "space_audit_mastery_system",
-      description:
-        "Read-only audit for MasterySystem-style Project Zomboid skill trees. Live grammar: Paths internalTrait ids vs character_trait_definition scripts, getActive ult1 = capstoneId only (no T5 name fallback), sendClientCommand player-first, CharacterTrait+ResourceLocation for Cunning grants, footstep Nutrition weight band 60/80/100, and no player:setEngineFeature. Does not expect obsolete rankNames / Mastery_Skill_BranchRankN ids.",
-      inputSchema: {
-        type: "object",
-        properties: {
-          path: { type: "string", description: "MasterySystem mod folder or similar skill-tree mod folder to audit." },
-        },
-        required: ["path"],
-      },
-    },
-    {
       name: "space_truth_search",
       description:
-        "Search canonical Project Zomboid modding truths. Defaults to verified truths only; pass status='pending' to inspect proposed discoveries.",
+        "Search canonical truths by substring. Defaults to verified only; pass status='pending' for proposed discoveries. Returns id, kind, summary; use space_truth_get for details.",
       inputSchema: {
         type: "object",
         properties: {
@@ -4781,8 +4552,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     },
     {
       name: "space_truth_get",
-      description:
-        "Get one canonical or pending PZ modding truth by stable id. Canonical verified/deprecated entries live in truths.json; pending.json is only unpromoted discoveries.",
+      description: "Get one truth by stable id, including details and evidence.",
       inputSchema: {
         type: "object",
         properties: {
@@ -4794,7 +4564,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     {
       name: "space_truth_propose",
       description:
-        "Propose a new PZ modding truth into Brain/truth/pending.json. Rejects ids that already exist in truths.json. Pending is the unpromoted inbox only — never copy verified or deprecated truths back into pending. Promotion requires APPROVE TRUTH <id>.",
+        "Propose a new pending truth. Rejects ids already canonical. Promotion requires APPROVE TRUTH <id>.",
       inputSchema: {
         type: "object",
         properties: {
@@ -4820,7 +4590,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     {
       name: "space_truth_review",
       description:
-        "List truths by status. Default status=pending lists only unpromoted discoveries in pending.json (entry count, not file line count). status=verified|deprecated reads truths.json. Leftover pending copies of canonical ids are not approval candidates — run space_truth_audit.",
+        "List truths by status (default pending) with summaries only. Use space_truth_get for full entries; space_truth_audit to clean leftovers.",
       inputSchema: {
         type: "object",
         properties: {
@@ -4869,7 +4639,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     {
       name: "space_truth_audit",
       description:
-        "Audit the PZ truth registry for malformed entries, duplicate ids within a collection, pending leftovers of already-canonical ids, and unknown enforced_by MCP tool names. pending.json must not contain ids that already exist in truths.json.",
+        "Audit the truth registry for malformed entries, duplicate ids, pending leftovers of canonical ids, and unknown enforced_by tools.",
       inputSchema: {
         type: "object",
         properties: {},
@@ -4878,7 +4648,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     {
       name: "space_generate_mod",
       description:
-        "Deterministic local Project Zomboid B42 mod generator. Takes a structured JSON spec (no free-form NL) and writes a workshop-layout folder to output_root/<modId>/. Does not run the release gate.",
+        "Deterministic B42 mod generator from a structured JSON spec; writes output_root/<modId>/. Does not run the release gate.",
       inputSchema: {
         type: "object",
         properties: {
@@ -4897,7 +4667,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     {
       name: "space_headless_probe",
       description:
-        "Isolated B42 dedicated (java.awt.headless, no Steam Workshop) under Workshop/_probe/headless-home. Stages PZHeadless + the target mod, never pz-live/pz-test/pz-temp. Default is dry-run (prepare argv + ini). run=true boots GameServer, waits for PZHEADLESS markers + SERVER STARTED, kills the process, and returns the log path for space_analyze_pz_log / the release gate. mode=train keeps the same JVM as a text-world trainer (HavenHeadless_tick.txt). Does not replace SP client probes.",
+        "Isolated B42 dedicated probe (default dry-run; run=true boots GameServer and returns the log path). Does not replace SP client probes.",
       inputSchema: {
         type: "object",
         properties: {
@@ -4923,21 +4693,20 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       },
     },
     ...MOD_INDEX_TOOLS.map(({ name, description, inputSchema }) => ({ name, description, inputSchema })),
-  ].filter((tool) => !PUBLIC_MODE || !["space_headless_probe", "space_stage_workshop_uploads"].includes(tool.name)),
+  ].filter((tool) => !PUBLIC_MODE || !PUBLIC_HIDDEN_TOOLS.includes(tool.name)),
 }));
 
 server.setRequestHandler(CallToolRequestSchema, async (req) => {
   const { name, arguments: args } = req.params;
 
-  if (PUBLIC_MODE && ["space_headless_probe", "space_stage_workshop_uploads"].includes(name)) {
+  if (PUBLIC_MODE && PUBLIC_HIDDEN_TOOLS.includes(name)) {
     return { isError: true, content: [{ type: "text", text: "This local deployment adapter is not included in the public profile. Use your own game testing and publishing workflow." }] };
   }
   if (name === "space_brain_status") {
     return { content: [{ type: "text", text: JSON.stringify({
       version: JSON.parse(await readFile(join(HERE, "package.json"), "utf8")).version,
       ...describeRoots(), truth: await auditTruthStore(TRUTH_ROOT),
-      migration: "Run node migrate.mjs --from <previous-Brain-or-package> in the public package. Imports remain pending; conflicts never overwrite canonical records.",
-    }, null, 2) }] };
+    }) }] };
   }
 
   if (name === "space_search_brain") {
@@ -4987,7 +4756,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
       content: [
         {
           type: "text",
-          text: JSON.stringify(matches, null, 2),
+          text: JSON.stringify(matches),
         },
       ],
     };
@@ -5007,16 +4776,22 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
     if (!matches.length) {
       return { content: [{ type: "text", text: `no script block entries match ${JSON.stringify(q)}` }] };
     }
+    const capped = matches.slice(0, 25);
 
     const payload = full
-      ? Object.fromEntries(matches)
-      : matches.map(([key, block]) => summarizeScriptBlock(key, block, parameterNeedle));
+      ? Object.fromEntries(capped)
+      : {
+          matched: matches.length,
+          returned: capped.length,
+          hint: matches.length > capped.length ? "narrow the query or use a parameter filter for more" : undefined,
+          blocks: capped.map(([key, block]) => summarizeScriptBlock(key, block, parameterNeedle)),
+        };
 
     return {
       content: [
         {
           type: "text",
-          text: JSON.stringify(payload, null, 2),
+          text: JSON.stringify(payload),
         },
       ],
     };
@@ -5029,13 +4804,13 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
       status: args?.status ? String(args.status) : undefined,
       max_results: args?.max_results,
     });
-    return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+    return { content: [{ type: "text", text: JSON.stringify(summarizeTruths(result)) }] };
   }
 
   if (name === "space_truth_get") {
     try {
       const result = await getTruth(TRUTH_ROOT, args?.id);
-      return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+      return { content: [{ type: "text", text: JSON.stringify(result) }] };
     } catch (err) {
       return { isError: true, content: [{ type: "text", text: err.message }] };
     }
@@ -5066,7 +4841,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
       kind: args?.kind ? String(args.kind) : undefined,
       max_results: args?.max_results,
     });
-    return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+    return { content: [{ type: "text", text: JSON.stringify(summarizeTruths(result)) }] };
   }
 
   if (name === "space_truth_promote") {
@@ -5074,7 +4849,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
       const result = await promoteTruth(TRUTH_ROOT, args?.id, args?.approval_text, {
         required_environments: args?.required_environments,
       });
-      return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+      return { content: [{ type: "text", text: JSON.stringify(result) }] };
     } catch (err) {
       return { isError: true, content: [{ type: "text", text: err.message }] };
     }
@@ -5087,7 +4862,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
         reason: args?.reason,
         approval_text: args?.approval_text,
       });
-      return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+      return { content: [{ type: "text", text: JSON.stringify(result) }] };
     } catch (err) {
       return { isError: true, content: [{ type: "text", text: err.message }] };
     }
@@ -5095,7 +4870,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
 
   if (name === "space_truth_audit") {
     const result = await auditTruthStore(TRUTH_ROOT, { validTools: await currentToolNameSet() });
-    return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+    return { content: [{ type: "text", text: JSON.stringify(result) }] };
   }
 
   if (name === "space_headless_probe") {
@@ -5114,7 +4889,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
         result.log_analysis_error = String(err && err.message ? err.message : err);
       }
     }
-    return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+    return { content: [{ type: "text", text: JSON.stringify(result) }] };
   }
 
   if (name === "space_generate_mod") {
@@ -5235,45 +5010,73 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
     };
   }
 
-  if (name === "space_audit_biteme_mods") {
-    const text = await auditBitemeMods(args?.path, args?.max_findings);
-    return { content: [{ type: "text", text }] };
+  if (name === "space_audit") {
+    const ALL_AUDITS = {
+      biteme_mods: (path) => auditBitemeMods(path),
+      lua_guards: (path) => auditLuaGuards(path),
+      safe_call: (path) => auditSafeCall(path),
+      translations: (path) => auditTranslations(path),
+      command_contracts: (path) => auditCommandContracts(path),
+      sandbox_schema: (path) => auditSandboxSchema(path),
+      bb_sandbox_menu: (path) => auditBBSandboxMenu(path),
+      text_encoding: (path) => auditTextEncoding(path),
+      runtime_risks: (path) => auditRuntimeRisks(path),
+      moddata_usage: (path) => auditModdataUsage(path),
+      network_commands: (path) => auditNetworkCommands(path),
+      event_hooks: (path) => auditEventHooks(path),
+      env_guards: (path) => validateEnvGuards(path),
+      workshop_meta: (path) => validateWorkshopMeta(path),
+      workshop_copy: (path) => formatWorkshopCopyAudit(path),
+      file_structure: (path) => validateFileStructure(path),
+      b42_changes: (path) => validateB42Changes(path),
+      bare_gettext: (path) => findBareGettext(path),
+      timed_actions: (path) => auditTimedActions(path),
+      isadmin_completeness: (path) => auditIsAdminCompleteness(path),
+      b42_api_traps: (path) => auditB42ApiTraps(path),
+      workshop_versions: (path) => validateWorkshopVersions(path),
+      mastery_system: (path) => auditMasterySystem(path),
+    };
+    const personalChecks = ["biteme_mods", "bb_sandbox_menu", "mastery_system"];
+    const available = PUBLIC_MODE
+      ? Object.keys(ALL_AUDITS).filter((c) => !personalChecks.includes(c))
+      : Object.keys(ALL_AUDITS);
+    const requestedAll = !Array.isArray(args?.checks) || !args.checks.length;
+    const requested = requestedAll ? available : args.checks;
+    const unknown = requested.filter((c) => !(c in ALL_AUDITS));
+    if (unknown.length) return { isError: true, content: [{ type: "text", text: `unknown checks: ${unknown.join(", ")}` }] };
+    const excluded = requested.filter((c) => !available.includes(c));
+    if (excluded.length) return { isError: true, content: [{ type: "text", text: `not included in the public profile: ${excluded.join(", ")}` }] };
+    const path = String(args?.path ?? "").trim();
+    if (!path) return { isError: true, content: [{ type: "text", text: "path is required" }] };
+    const sections = [];
+    for (const check of requested) {
+      try {
+        sections.push(`=== ${check} ===\n${await ALL_AUDITS[check](path)}`);
+      } catch (err) {
+        sections.push(`=== ${check} ===\nERROR: ${err.message}`);
+      }
+    }
+    return { content: [{ type: "text", text: sections.join("\n\n") }] };
   }
 
-  if (name === "space_inspect_mod_layout") {
+  if (name === "space_inspect") {
+    const kind = args?.kind === "todo_items" ? "todo_items" : "mod_layout";
+    if (kind === "todo_items") {
+      const max = Math.min(200, Math.max(1, Number(args?.max_results ?? 50)));
+      const text = await listTodoItems(args?.path, max);
+      return { content: [{ type: "text", text }] };
+    }
     const text = await inspectModLayout(args?.path);
     return { content: [{ type: "text", text }] };
   }
 
-  if (name === "space_audit_lua_guards") {
-    const text = await auditLuaGuards(args?.path);
-    return { content: [{ type: "text", text }] };
-  }
 
-  if (name === "space_audit_safe_call") {
-    const text = await auditSafeCall(args?.path);
-    return { content: [{ type: "text", text }] };
-  }
 
-  if (name === "space_audit_translations") {
-    const text = await auditTranslations(args?.path);
-    return { content: [{ type: "text", text }] };
-  }
 
-  if (name === "space_audit_command_contracts") {
-    const text = await auditCommandContracts(args?.path);
-    return { content: [{ type: "text", text }] };
-  }
 
-  if (name === "space_audit_sandbox_schema") {
-    const text = await auditSandboxSchema(args?.path);
-    return { content: [{ type: "text", text }] };
-  }
 
-  if (name === "space_audit_bb_sandbox_menu") {
-    const text = await auditBBSandboxMenu(args?.path);
-    return { content: [{ type: "text", text }] };
-  }
+
+
 
   if (name === "space_stage_workshop_uploads") {
     const result = await stageWorkshopUploads({
@@ -5283,18 +5086,10 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
       changenote: args?.changenote || "",
       mode: args?.mode === "store" ? "store" : "hold",
     });
-    return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+    return { content: [{ type: "text", text: JSON.stringify(result) }] };
   }
 
-  if (name === "space_audit_text_encoding") {
-    const text = await auditTextEncoding(args?.path);
-    return { content: [{ type: "text", text }] };
-  }
 
-  if (name === "space_audit_runtime_risks") {
-    const text = await auditRuntimeRisks(args?.path);
-    return { content: [{ type: "text", text }] };
-  }
 
   if (name === "space_analyze_pz_log") {
     const text = await analyzePzLog(args?.path, args?.text);
@@ -5331,87 +5126,26 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
     return { content: [{ type: "text", text }] };
   }
 
-  if (name === "space_audit_moddata_usage") {
-    const text = await auditModdataUsage(args?.path);
-    return { content: [{ type: "text", text }] };
-  }
 
-  if (name === "space_audit_network_commands") {
-    const text = await auditNetworkCommands(args?.path);
-    return { content: [{ type: "text", text }] };
-  }
 
-  if (name === "space_audit_event_hooks") {
-    const text = await auditEventHooks(args?.path);
-    return { content: [{ type: "text", text }] };
-  }
 
-  if (name === "space_validate_env_guards") {
-    const text = await validateEnvGuards(args?.path);
-    return { content: [{ type: "text", text }] };
-  }
 
-  if (name === "space_validate_workshop_meta") {
-    const text = await validateWorkshopMeta(args?.path);
-    return { content: [{ type: "text", text }] };
-  }
 
-  if (name === "space_audit_workshop_copy") {
-    const text = await formatWorkshopCopyAudit(args?.path);
-    return { content: [{ type: "text", text }] };
-  }
 
-  if (name === "space_validate_file_structure") {
-    const text = await validateFileStructure(args?.path);
-    return { content: [{ type: "text", text }] };
-  }
 
-  if (name === "space_validate_b42_changes") {
-    const text = await validateB42Changes(args?.path);
-    return { content: [{ type: "text", text }] };
-  }
 
-  if (name === "space_find_bare_gettext") {
-    const text = await findBareGettext(args?.path);
-    return { content: [{ type: "text", text }] };
-  }
 
-  if (name === "space_list_todo_items") {
-    const max = Math.min(200, Math.max(1, Number(args?.max_results ?? 50)));
-    const text = await listTodoItems(args?.path, max);
-    return { content: [{ type: "text", text }] };
-  }
 
-  if (name === "space_audit_timed_actions") {
-    const text = await auditTimedActions(args?.path);
-    return { content: [{ type: "text", text }] };
-  }
 
-  if (name === "space_audit_isadmin_completeness") {
-    const text = await auditIsAdminCompleteness(args?.path);
-    return { content: [{ type: "text", text }] };
-  }
 
-  if (name === "space_audit_b42_api_traps") {
-    const text = await auditB42ApiTraps(args?.path);
-    return { content: [{ type: "text", text }] };
-  }
 
-  if (name === "space_validate_workshop_versions") {
-    const text = await validateWorkshopVersions(args?.path);
-    return { content: [{ type: "text", text }] };
-  }
 
-  if (name === "space_audit_mastery_system") {
-    const text = await auditMasterySystem(args?.path);
-    return { content: [{ type: "text", text }] };
-  }
 
   for (const tool of MOD_INDEX_TOOLS) {
     if (name === tool.name) {
       try {
         const result = await tool.handler(args);
-        return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+        return { content: [{ type: "text", text: JSON.stringify(result) }] };
       } catch (err) {
         return { content: [{ type: "text", text: `Error in ${name}: ${err.message}` }], isError: true };
       }

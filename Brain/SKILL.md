@@ -55,7 +55,10 @@ supported. Review evidence before promoting imported records.
 
 ## Creation and validation
 
-Inspect existing mod layout and ownership before editing. Use
+Inspect existing mod layout and ownership before editing. Use `space_audit`
+(path plus optional checks list) for focused audits and
+`space_production_release_gate` for the full pass/fail verdict; `space_inspect`
+covers mod layout and TODO scans. Use
 `space_generate_mod` for supported scaffolds; generated mods are starting points
 and still need feature implementation, assets and game tests. Pass an explicit
 author or configure one during setup. Search the user's local corpus only after

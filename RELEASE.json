@@ -17638,8 +17638,8 @@
     },
     {
       "path": "Brain/mcp-server/server.mjs",
-      "bytes": 232653,
-      "sha256": "9f0b76e7aae7ee2d6a6c54c3f583ae2e24f4572a8e8751aec5d793ee1fe72653"
+      "bytes": 217375,
+      "sha256": "1223dca8c1033a83edfcb5bf99c575e2e25e00a0b4b79bfd3a67440ee77cbdfd"
     },
     {
       "path": "Brain/mcp-server/truth-store.mjs",
@@ -17908,8 +17908,8 @@
     },
     {
       "path": "Brain/SKILL.md",
-      "bytes": 4105,
-      "sha256": "5c79a654012ad4525855f0af7edd577fd98b0bed25f36e01d74de307cea286de"
+      "bytes": 4293,
+      "sha256": "9c96ec03811cbbd2ffbb3ebaed89dd846676d100620b5c7690c0ac513eb5d4db"
     },
     {
       "path": "Brain/TODO_LEARN.md",
