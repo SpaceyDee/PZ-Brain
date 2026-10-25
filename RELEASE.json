@@ -1,7 +1,7 @@
 {
   "name": "pz-modding-brain",
-  "version": "0.2.0",
-  "previousVersion": "0.1.0",
+  "version": "0.2.1",
+  "previousVersion": "0.2.0",
   "knowledgeSchema": 1,
   "knowledgeSnapshot": "2026-10-25",
   "builtAt": "2026-10-24T22:55:56.109Z",
@@ -17613,13 +17613,13 @@
     },
     {
       "path": "Brain/mcp-server/package-lock.json",
-      "bytes": 41448,
-      "sha256": "b0bf6a2f554b09fffd31f114161fc34b53a6d6c59495a41046f8d90ce90b174b"
+      "bytes": 40304,
+      "sha256": "bcc84dcd3ae33b16e4fcb08f7d5e496c408d0055df06be2b818a0458693dfc84"
     },
     {
       "path": "Brain/mcp-server/package.json",
       "bytes": 514,
-      "sha256": "2d5102bd8592d2c80c009222fc98be19b8b3b3dfd6bb8527936ad3f607ecea18"
+      "sha256": "656d74b6fcdda5dfcf6338cdc7c7e189475521e4654913144cecdd0b7e1159bf"
     },
     {
       "path": "Brain/mcp-server/paths.mjs",
@@ -17933,8 +17933,8 @@
     },
     {
       "path": "CHANGELOG.md",
-      "bytes": 1164,
-      "sha256": "18458e83aecb906405917cc1e48827e3dcda4240088b7a68ae87b307d62b4325"
+      "bytes": 2300,
+      "sha256": "da08021f269fbbf784f0efbb8f67b913ff3b3f6ca7471710fad25ccc7920fc5b"
     },
     {
       "path": "doctor.mjs",
@@ -17963,8 +17963,8 @@
     },
     {
       "path": "README.md",
-      "bytes": 6509,
-      "sha256": "666c613665f6eb899d2629fec7f1ceeb3c662e264f662f3f4ee619125cb7a29c"
+      "bytes": 6516,
+      "sha256": "a1282b889dbed29ee317e95805bc774a77b19b292ce3849720bd646f0553dac9"
     },
     {
       "path": "samples/hello.lua",
