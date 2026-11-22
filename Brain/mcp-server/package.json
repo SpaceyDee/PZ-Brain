@@ -1,6 +1,6 @@
 {
   "name": "pz-modding-brain-mcp",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "MCP server exposing the Project Zomboid B42 modding Brain as resources + tools.",
   "type": "module",
   "bin": {

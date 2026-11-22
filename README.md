@@ -1,4 +1,4 @@
-# PZ Modding Brain — public 0.2.0
+# PZ Modding Brain — public 0.2.1
 
 Knowledge snapshot: 25 October 2026. An unofficial local MCP server for Project
 Zomboid Build 42 modding, prepared by Mr Space Cadet for sharing with friends.
@@ -68,7 +68,7 @@ node install.mjs --help
 ## Upgrade and absorb older knowledge
 
 Unzip each release into a new folder, then run setup and select the previous
-package/Brain folder. Version 0.2.0 succeeds the earlier 0.1.0 package. **A higher
+package/Brain folder. Version 0.2.1 succeeds the earlier 0.1.0/0.2.0 packages. **A higher
 version does not imply it contains every discovery from every older copy.**
 
 You can also import at any time, including from multiple older copies:
